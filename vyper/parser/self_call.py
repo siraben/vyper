@@ -1,4 +1,5 @@
 import itertools
+import uuid
 
 from vyper.exceptions import (
     ConstancyViolation,
@@ -185,9 +186,22 @@ def call_self_private(stmt_expr, context, sig):
             ]
 
         # push static section
-        push_args += [
-            ['mload', pos] for pos in reversed(range(arg_pos, static_pos, 32))
-        ]
+        i_placeholder = context.new_placeholder(BaseType('uint256'))
+        push_loop_label = f"_push_args_loop2_{str(uuid.uuid4())}"
+        if static_pos - arg_pos > 320:
+            push_args += [
+                ['mload', pos] for pos in reversed(range(arg_pos, static_pos, 32))
+            ]
+        else:
+            push_args += [
+                    ['mstore', i_placeholder, static_pos - 32],
+                    ['label', push_loop_label],
+                    ['mload', ['mload', i_placeholder]],
+                    ['mstore', i_placeholder, ['sub', ['mload', i_placeholder], 32]],
+                    ['if', ['ge', ['mload', i_placeholder], arg_pos],
+                        ['goto', push_loop_label]]
+            ]
+
     elif sig.args:
         raise StructureException(
             f"Wrong number of args for: {sig.name} (0 args given, expected {len(sig.args)})",
